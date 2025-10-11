@@ -1,0 +1,67 @@
+version: "3.8"
+
+services:
+  redis:
+    image: redis:7
+    container_name: redis-local
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+  api-gateway:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+      target: development
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./:/app
+    env_file:
+      - .env
+    networks:
+      - shared-network
+
+  user-service:
+    build:
+      context: ./user-service
+      dockerfile: ./Dockerfile
+      target: development
+    ports:
+      - "6001:6001"
+    volumes:
+      - ./user-service/src:/app/src
+    env_file:
+      - .env
+    networks:
+      - shared-network
+  collaboration-service:
+    build:
+      context: ./collaboration-service
+      dockerfile: ./Dockerfile
+      target: development
+    ports:
+      - "6004:6004"
+    volumes:
+      - ./collaboration-service/src:/app/src
+    env_file:
+      - .env
+    networks:
+      - shared-network
+
+  question-service:
+    build:
+      context: ./question-service
+      dockerfile: ./Dockerfile
+      target: development
+    ports:
+      - "6002:6002"
+    volumes:
+      - ./question-service/src:/app/src
+    env_file:
+      - .env
+    networks:
+      - shared-network
+
+networks:
+  shared-network:
+    driver: bridge

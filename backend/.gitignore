@@ -1,0 +1,13 @@
+.env
+.env.production
+/node_modules/
+dump.rdb
+/builds/
+/dist/
+/logs/
+/.cache/
+
+# Test files
+test-endpoints.js
+test-question-retrieval.js
+test-api.sh
