@@ -1,0 +1,76 @@
+name: Deploy to Vercel (Fork)
+
+on:
+  push:
+    branches: [master, "**/*"] # Previews on all branches
+  pull_request_target:
+    branches: ["master"] # Trigger on all pull requests targeting master
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel
+
+      - name: Debug Working Directory
+        run: |
+          echo "Current working directory: $(pwd)"
+          ls -la
+          ls -la frontend
+
+      - name: Install dependencies
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_API_URL: "http://localhost:8000"
+          NEXT_PUBLIC_URL: "http://localhost:3000"
+        run: npm ci
+
+      - name: Vercel pull
+        working-directory: frontend
+        run: npx vercel pull --yes --environment=${{ github.event_name == 'push' && 'production' || 'preview' }} --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Fix .vercel/project.json
+        working-directory: frontend
+        run: |
+          jq '.settings.rootDirectory = null' .vercel/project.json > .vercel/project.json.tmp
+          mv .vercel/project.json.tmp .vercel/project.json
+
+      - name: Debug Directory After Vercel Pull
+        working-directory: frontend
+        run: |
+          echo "Current working directory: $(pwd)"
+          ls -la
+
+      - name: Debug .vercel/project.json
+        working-directory: frontend
+        run: cat .vercel/project.json
+
+      - name: Build
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_API_URL: "http://localhost:8000"
+          NEXT_PUBLIC_URL: "http://localhost:3000"
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx vercel build --cwd . --token=${{ secrets.VERCEL_TOKEN }}

@@ -1,0 +1,8 @@
+.env
+.env.production
+/node_modules/
+dump.rdb
+/builds/
+/dist/
+/logs/
+/.cache/
