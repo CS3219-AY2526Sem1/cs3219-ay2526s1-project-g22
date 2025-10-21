@@ -16,13 +16,7 @@ import { indentWithTab } from "@codemirror/commands";
 import { debounce } from "lodash";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/supabase-client";
-import {
-  AnyPayload,
-  SyncRequestPayload,
-  SyncResponsePayload,
-  SyncAckPayload,
-  CodeUpdatePayload,
-} from "../types/realtime";
+import { AnyPayload, CodeUpdatePayload } from "../types/realtime";
 import { useUser } from "@/contexts/user-context";
 import axiosInstance from "@/lib/axios";
 import { Question } from "@/queries/use-get-questions";
@@ -33,21 +27,28 @@ import CodeEditorSubmissionResults from "./CodeEditorSubmissionResults";
 import RealtimeContext from "../contexts/realtime-context";
 import { useRouter } from "next/navigation";
 
-// Type definitions
+// --- YJS imports ---
+import * as Y from "yjs";
+import { yCollab } from "y-codemirror.next";
+import {
+  Awareness,
+  encodeAwarenessUpdate,
+  applyAwarenessUpdate,
+} from "y-protocols/awareness";
+
 interface CodeSnippet {
   lang?: string;
   language?: string;
   code?: string;
   content?: string;
 }
-
 interface SubmissionResult {
   language: string;
   [key: string]: unknown;
 }
 
-// Language mappings for display and execution
 const baseApiUrl = "/api/collaboration-service";
+
 type Props = {
   sessionId: string;
   question?: Question;
@@ -59,65 +60,30 @@ export default function CodeEditor({ sessionId, question }: Props) {
   const { user } = useUser();
   const userId = user?.id;
 
-  const [code, setCode] = useState<string>("// Loading session...\n");
-  const [isBlocked, setIsBlocked] = useState<boolean>(false);
-
-  // Language selection and execution states
   const [selectedLanguage, setSelectedLanguage] =
     useState<string>("JavaScript");
   const [submissionHistory, setSubmissionHistory] = useState<
     SubmissionResult[]
   >([]);
 
-  // Get available languages from question codeSnippets or default
-  const availableLanguages = useMemo(() => {
-    if (!question?.codeSnippets) return ["Python", "JavaScript", "C++"];
+  const supabase = useMemo(() => createClient(), []);
+  const channelRef = useRef<RealtimeChannel | null>(null);
+  const snapshotIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null
+  );
 
-    return question.codeSnippets
-      .map((snippet: CodeSnippet) => {
-        if (
-          !(snippet.lang === "Python3") &&
-          !(snippet.language === "Python3")
-        ) {
-          return snippet.lang || snippet.language;
-        }
-      })
-      .filter(Boolean) as string[];
-  }, [question?.codeSnippets]);
-
-  // Get current code snippet from question
-  const currentQuestionCode = useMemo(() => {
-    if (!question?.codeSnippets) {
-      const defaultSnippets = {
-        Python: "def solve():\n    # Your code here\n    pass",
-        JavaScript: "function solve() {\n    // Your code here\n}",
-        "C++":
-          "// Your C++ code here\n#include <iostream>\nusing namespace std;\n\nint main() {\n    // Your code here\n    return 0;\n}",
-      };
-      return (
-        defaultSnippets[selectedLanguage as keyof typeof defaultSnippets] || ""
-      );
-    }
-
-    const snippet = question.codeSnippets.find(
-      (s: CodeSnippet) => (s.lang || s.language) === selectedLanguage
-    );
-    return snippet?.code || snippet?.content || "";
-  }, [question?.codeSnippets, selectedLanguage]);
-
-  // Update code when language changes (only if no user code exists)
+  // yjs setup
+  const ydocRef = useRef<Y.Doc>(new Y.Doc());
+  const ytextRef = useRef<Y.Text>(ydocRef.current.getText("codemirror"));
+  const awarenessRef = useRef<Awareness>(new Awareness(ydocRef.current));
   useEffect(() => {
-    if (code === "// Loading session...\n" || code.trim() === "") {
-      setCode(currentQuestionCode);
-    }
-  }, [selectedLanguage, currentQuestionCode, code]);
+    const awareness = awarenessRef.current;
+    awareness.setLocalStateField("user", {
+      name: userId || "anon",
+      color: "#FF0000",
+    });
+  }, [userId]);
 
-  useEffect(() => {
-    setCode(currentQuestionCode);
-    broadcastChange(currentQuestionCode);
-  }, [selectedLanguage]);
-
-  // Execute code function
   const executeCode = async () => {
     const langConfig =
       languageMap[selectedLanguage as keyof typeof languageMap];
@@ -125,14 +91,13 @@ export default function CodeEditor({ sessionId, question }: Props) {
       alert("Language not supported for execution yet!");
       return;
     }
-
     try {
       const res = await fetch("/api/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           language: langConfig.apiLang,
-          code: code,
+          code: ytextRef.current.toString(),
           tests: langConfig.testTemplate,
         }),
       });
@@ -146,37 +111,18 @@ export default function CodeEditor({ sessionId, question }: Props) {
     }
   };
 
-  const supabase = useMemo(() => createClient(), []);
-  const channelRef = useRef<RealtimeChannel | null>(null);
-  const applyingRemoteRef = useRef(false);
-  const snapshotIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
-    null
-  );
-  const codeRef = useRef(code);
-  useEffect(() => {
-    codeRef.current = code;
-  }, [code]);
-
-  // end the collab session
   const endSession = useCallback(() => {
     const channel = channelRef.current;
     if (!channel) return;
-
     channel.send({
       type: "broadcast",
       event: "exit_session",
-      payload: {
-        type: "end_session",
-        from: userId,
-        ts: Date.now(),
-      },
+      payload: { type: "end_session", from: userId, ts: Date.now() },
     });
-
     if (snapshotIntervalRef.current) {
       clearInterval(snapshotIntervalRef.current);
       snapshotIntervalRef.current = null;
     }
-
     if (channelRef.current) {
       channelRef.current.unsubscribe();
       channelRef.current = null;
@@ -185,101 +131,94 @@ export default function CodeEditor({ sessionId, question }: Props) {
     setTimeout(() => router.push("/"), 1000);
   }, [userId, router]);
 
-  // Join Supabase channel
   const joinRealtimeChannel = useCallback(
     async (initialCode: string) => {
-      console.log(
-        "Joining channel with initial code:",
-        initialCode.slice(0, 50)
-      );
       const channel = supabase.channel(`room-${sessionId}`, {
         config: { presence: { key: userId } },
       });
 
-      channel.on("presence", { event: "sync" }, () => {
-        const state = channel.presenceState();
+      // apply yjs updates
+      channel.on("broadcast", { event: "yjs-update" }, (payload) => {
+        const update = new Uint8Array(payload.payload.update);
+        Y.applyUpdate(ydocRef.current, update);
       });
 
+      // apply awareness update
+      channel.on("broadcast", { event: "awareness-update" }, (payload) => {
+        const update = new Uint8Array(payload.payload.update);
+        applyAwarenessUpdate(awarenessRef.current, update, "remote");
+      });
+
+      // exit session for both users
       channel.on("broadcast", { event: "exit_session" }, (payload) => {
         const data = payload.payload as { type: string; from: string };
-        if (data.type === "end_session") {
-          console.log("Received end session signal");
-          endSession();
-        }
-      });
-
-      channel.on("broadcast", { event: "editor" }, (payload) => {
-        const data = payload.payload as AnyPayload;
-        switch (data.type) {
-          case "sync_request": {
-            if (data.from === userId) break;
-            safeBroadcast(channel, {
-              type: "sync_response",
-              to: data.from,
-              from: userId,
-              code: codeRef.current,
-              ts: nowTs(),
-            } as SyncResponsePayload);
-            break;
-          }
-          case "sync_response": {
-            if (data.to !== userId) return;
-            applyingRemoteRef.current = true;
-            setCode(data.code);
-            setIsBlocked(false);
-            safeBroadcast(channel, {
-              type: "sync_ack",
-              to: data.from,
-              from: userId,
-              ts: nowTs(),
-            } as SyncAckPayload);
-            break;
-          }
-          case "sync_ack": {
-            if (data.to !== userId) return;
-            setIsBlocked(false);
-            break;
-          }
-          case "code_update": {
-            if (data.from === userId) return;
-            applyingRemoteRef.current = true;
-            setCode(data.code);
-            break;
-          }
-        }
+        if (data.type === "end_session") endSession();
       });
 
       const sub = await channel.subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
           await channel.track({ userId });
-          const ids = Object.keys(channel.presenceState() || {});
-          if (ids.length > 1) {
-            setIsBlocked(true);
-            safeBroadcast(channel, {
-              type: "sync_request",
-              from: userId,
-              ts: nowTs(),
-            } as SyncRequestPayload);
-          } else {
-            setIsBlocked(false);
-          }
         }
       });
 
+      // broadcast local yjs doc update
+      ydocRef.current.on("update", (update) => {
+        channel.send({
+          type: "broadcast",
+          event: "yjs-update",
+          payload: { update: Array.from(update) },
+        });
+      });
+
+      // broadcast awareness changes
+      awarenessRef.current.on(
+        "update",
+        ({
+          added,
+          updated,
+          removed,
+        }: {
+          added: number[];
+          updated: number[];
+          removed: number[];
+        }) => {
+          const changedClients = added.concat(updated, removed);
+          const update = encodeAwarenessUpdate(
+            awarenessRef.current,
+            changedClients
+          );
+          channel.send({
+            type: "broadcast",
+            event: "awareness-update",
+            payload: { update: Array.from(update) },
+          });
+        }
+      );
+
+      // init code
+      if (initialCode && ytextRef.current.length === 0) {
+        ytextRef.current.insert(0, initialCode);
+      }
+
       channelRef.current = channel;
+
+      // periodic persistence
       if (snapshotIntervalRef.current)
         clearInterval(snapshotIntervalRef.current);
       snapshotIntervalRef.current = setInterval(() => {
-        persistSnapshot(baseApiUrl, sessionId, codeRef.current).catch(
-          () => void 0
-        );
+        persistSnapshot(
+          baseApiUrl,
+          sessionId,
+          ytextRef.current.toString()
+        ).catch(() => void 0);
       }, 5000);
+
       return sub;
     },
-    [supabase, sessionId, userId]
+    [supabase, sessionId, userId, endSession]
   );
 
-  // Fetch session and initial code
+  // fetch initial code
   useEffect(() => {
     let aborted = false;
     async function initSession() {
@@ -287,16 +226,12 @@ export default function CodeEditor({ sessionId, question }: Props) {
         const resp = await axiosInstance.get(
           `${baseApiUrl}/sessions/${sessionId}`
         );
-        if (resp.status !== 200)
-          throw new Error(`Session fetch failed (${resp.status})`);
+        if (resp.status !== 200) throw new Error(`Session fetch failed`);
         const session = resp.data;
         if (aborted) return;
-
         const initial =
           typeof session.current_code === "string" ? session.current_code : "";
-        setCode(initial);
         await joinRealtimeChannel(initial);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (e: any) {
         console.log(`Error: ${e.message || e}`);
       }
@@ -305,9 +240,9 @@ export default function CodeEditor({ sessionId, question }: Props) {
     return () => {
       aborted = true;
     };
-  }, [sessionId, joinRealtimeChannel, question]);
+  }, [sessionId, joinRealtimeChannel]);
 
-  // Cleanup
+  // clean up
   useEffect(() => {
     return () => {
       if (snapshotIntervalRef.current)
@@ -316,40 +251,6 @@ export default function CodeEditor({ sessionId, question }: Props) {
     };
   }, []);
 
-  // Debounced broadcaster
-  const broadcastChange = useMemo(
-    () =>
-      debounce(
-        (nextCode: string) => {
-          const channel = channelRef.current;
-          if (!channel) return;
-          safeBroadcast(channel, {
-            type: "code_update",
-            from: userId,
-            code: nextCode,
-            ts: nowTs(),
-          } as CodeUpdatePayload);
-        },
-        100,
-        { leading: true, trailing: true }
-      ),
-    [userId]
-  );
-
-  const onChange = useCallback(
-    (value: string) => {
-      if (isBlocked) return;
-      if (applyingRemoteRef.current) {
-        applyingRemoteRef.current = false;
-        setCode(value);
-        return;
-      }
-      setCode(value);
-      broadcastChange(value);
-    },
-    [isBlocked, broadcastChange]
-  );
-
   const extensions = useMemo(() => {
     const langConfig =
       languageMap[selectedLanguage as keyof typeof languageMap];
@@ -357,15 +258,15 @@ export default function CodeEditor({ sessionId, question }: Props) {
       javascript(),
       indentUnit.of("  "),
     ];
-
     return [
       ...langExtensions,
-      EditorView.lineWrapping,
-      EditorView.editable.of(!isBlocked),
+      oneDark,
       indentOnInput(),
       keymap.of([indentWithTab]),
+      EditorView.lineWrapping,
+      yCollab(ytextRef.current, awarenessRef.current, { undoManager: false }),
     ];
-  }, [isBlocked, selectedLanguage]);
+  }, [selectedLanguage]);
 
   return (
     <RealtimeContext.Provider
@@ -385,66 +286,62 @@ export default function CodeEditor({ sessionId, question }: Props) {
       )}
 
       <div className="flex flex-col h-full">
-        {/* Header with room info and controls */}
+        {/* Header */}
         <div className="flex justify-between items-center p-4 bg-slate-900/50 border-b border-slate-600/30">
           <CodeEditorHeader
             sessionId={sessionId}
             userId={userId || "unknown"}
-            isBlocked={isBlocked}
+            isBlocked={false} // everyone can edit
           />
         </div>
 
-        {/* Language Selection and Execute Controls */}
+        {/* Language & Execute controls */}
         <CodeEditorLanguageSelectionAndRunButton
           selectedLanguage={selectedLanguage}
           setSelectedLanguage={setSelectedLanguage}
-          setCode={setCode}
-          availableLanguages={availableLanguages}
+          setCode={() => {}} // not used with Yjs
+          availableLanguages={
+            question?.codeSnippets?.map((s) => s.lang || s.language) || [
+              "Python",
+              "JavaScript",
+              "C++",
+            ]
+          }
           executeCode={executeCode}
-          isBlocked={isBlocked}
+          isBlocked={false}
           languageMap={languageMap}
         />
 
-        {/* Main Content Area */}
+        {/* Main editor */}
         <div className="flex flex-1 min-h-0 gap-4 p-4">
-          {/* Code Editor */}
           <div className="flex-1 flex flex-col min-w-0">
             <div className="flex-1 rounded-lg overflow-hidden border border-slate-600/50 shadow-inner">
               <CodeMirror
-                value={code}
+                value={""}
                 height="100%"
                 theme={oneDark}
                 extensions={extensions}
-                onChange={onChange}
                 basicSetup={{
                   lineNumbers: true,
                   foldGutter: true,
                   dropCursor: false,
-                  allowMultipleSelections: false,
+                  allowMultipleSelections: true,
                   indentOnInput: true,
                   bracketMatching: true,
                   closeBrackets: true,
                   autocompletion: true,
-                  highlightSelectionMatches: false,
                 }}
               />
             </div>
           </div>
         </div>
 
-        {/* Execution Results Sidebar */}
         <CodeEditorSubmissionResults submissionHistory={submissionHistory} />
       </div>
     </RealtimeContext.Provider>
   );
 }
 
-// interface used to broadcast into the channel
-function safeBroadcast(channel: RealtimeChannel, payload: AnyPayload) {
-  channel.send({ type: "broadcast", event: "editor", payload });
-}
-
-// updates record in the db
 async function persistSnapshot(
   baseUrl: string,
   sessionId: string,
@@ -453,12 +350,6 @@ async function persistSnapshot(
   await axiosInstance.patch(
     `${baseUrl}/sessions/${sessionId}/snapshot`,
     { code },
-    {
-      headers: { "Content-Type": "application/json" },
-    }
+    { headers: { "Content-Type": "application/json" } }
   );
-}
-
-function nowTs() {
-  return Date.now();
 }
