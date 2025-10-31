@@ -70,6 +70,10 @@ export default function CodeEditor({
   const [submissionHistory, setSubmissionHistory] = useState<
     SubmissionResult[]
   >([]);
+  // initial code to show in the editor (from session or question snippet)
+  const [initialCode, setInitialCode] = useState<string | undefined>(
+    undefined
+  );
 
   const supabase = useMemo(() => createClient(), []);
   const channelRef = useRef<RealtimeChannel | null>(null);
@@ -157,6 +161,8 @@ export default function CodeEditor({
       const channel = supabase.channel(`room-${sessionId}`, {
         config: { presence: { key: userId } },
       });
+
+      
 
       // apply yjs updates
       channel.on("broadcast", { event: "yjs-update" }, (payload) => {
@@ -246,9 +252,24 @@ export default function CodeEditor({
         }
       );
 
-      // init code
+      // init code: insert initial only if Y.Text is empty, with small
+      // randomized delay to avoid both clients inserting the same snippet
+      // concurrently (reduces duplicate snippets).
       if (initialCode && ytextRef.current.length === 0) {
-        ytextRef.current.insert(0, initialCode);
+        const delay = 50 + Math.floor(Math.random() * 150);
+        setTimeout(async () => {
+          try {
+            if (ytextRef.current.length === 0) {
+              ytextRef.current.insert(0, initialCode);
+              // best-effort persist so future joins pick it up from the session
+              await persistSnapshot(baseApiUrl, sessionId, initialCode).catch(
+                () => void 0
+              );
+            }
+          } catch (err) {
+            // ignore
+          }
+        }, delay);
       }
 
       channelRef.current = channel;
@@ -273,16 +294,46 @@ export default function CodeEditor({
   useEffect(() => {
     let aborted = false;
     async function initSession() {
-      try {
-        const resp = await axiosInstance.get(
-          `${baseApiUrl}/sessions/${sessionId}`
-        );
-        if (resp.status !== 200) throw new Error(`Session fetch failed`);
-        const session = resp.data;
-        if (aborted) return;
-        const initial =
-          typeof session.current_code === "string" ? session.current_code : "";
-        await joinRealtimeChannel(initial);
+        try {
+          const resp = await axiosInstance.get(
+            `${baseApiUrl}/sessions/${sessionId}`
+          );
+          if (resp.status !== 200) throw new Error(`Session fetch failed`);
+          const session = resp.data;
+          if (aborted) return;
+          // Prefer session.current_code if present. Otherwise fall back to the
+          // first code snippet attached to the question (if any).
+          const sessionCode =
+            typeof session.current_code === "string" && session.current_code
+              ? session.current_code
+              : "";
+
+          const questionSnippet =
+            question?.codeSnippets && question.codeSnippets.length > 0
+              ? // try a few common fields for snippet content
+                (question.codeSnippets[0].code ||
+                  question.codeSnippets[0].content ||
+                  question.codeSnippets[0].snippet ||
+                  "")
+              : "";
+
+          // If session has code use it, otherwise use question snippet (if any)
+          const initial = sessionCode || questionSnippet || "";
+
+          // Expose initial code to CodeMirror via defaultValue
+          setInitialCode(initial || undefined);
+
+          // Join realtime channel and let joinRealtimeChannel insert into Y.Text
+          await joinRealtimeChannel(initial);
+
+          // If session had no persisted code but question provided a snippet,
+          // persist it so subsequent joins see it from the session row.
+          if (!sessionCode && questionSnippet) {
+            // Best-effort persist; ignore errors
+            persistSnapshot(baseApiUrl, sessionId, questionSnippet).catch(() =>
+              void 0
+            );
+          }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (e: any) {
         console.log(`Error: ${e.message || e}`);
@@ -401,7 +452,11 @@ export default function CodeEditor({
           <div className="flex-1 flex flex-col min-w-0">
             <div className="flex-1 rounded-lg overflow-hidden border border-slate-600/50 shadow-inner">
               <CodeMirror
-                value={""}
+                // Let yCollab / Y.Text control the document. Provide an initial
+                // value only via `defaultValue` so we don't overwrite the CRDT.
+                defaultValue={initialCode}
+                // key the editor by session so switching sessions forces a fresh mount
+                key={sessionId}
                 height="100%"
                 theme={oneDark}
                 extensions={extensions}
