@@ -322,7 +322,7 @@ export default function HistoryTable({ data }: HistoryTableProps) {
         }}
       >
         <DialogContent
-          className="bg-slate-900 border-blue-800/50 text-white shadow-xl sm:max-w-5xl"
+          className="bg-slate-900 border-blue-800/50 text-white shadow-xl sm:max-w-5xl lg:max-w-7xl"
         >
           <DialogHeader className="border-b border-blue-800/30 pb-3">
             <DialogTitle className="text-xl font-bold text-blue-400">
@@ -331,66 +331,82 @@ export default function HistoryTable({ data }: HistoryTableProps) {
           </DialogHeader>
 
           <div className="mt-4 flex flex-col md:flex-row gap-4">
-            <div className="flex-1">
-              <div className="relative pretty-scrollbar bg-slate-800 rounded-lg p-4 overflow-x-auto max-h-[60vh] text-sm font-mono whitespace-pre-wrap border border-blue-800/30 text-green-300">
-              {selectedCode ? (
-                <pre >
-                  {selectedCode}
-                  <button
-                    className="absolute top-2 right-2
-                               bg-gradient-to-r from-blue-500 to-indigo-600
-                               hover:from-blue-600 hover:to-indigo-700
-                               text-white p-2 rounded-md shadow-lg
-                               transition-all duration-300 ease-in-out
-                               disabled:opacity-50 disabled:cursor-not-allowed"
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      setIsLoading(true);
-                      setAiResponse('');
-                      try {
-                        const data = await handleButtonClick(selectedCode);
-                        setAiResponse(data.response);
-                      } catch (error) {
-                        console.error('Error fetching AI response:', error);
-                        setAiResponse(
-                          error instanceof Error ? error.message : 'Failed to fetch response.'
-                        );
-                      } finally {
-                        setIsLoading(false);
-                      }
-                    }}
-                    disabled={isLoading}
-                    title="Generate AI Summary"
-                  >
-                    <span className="font-bold text-sm">AI</span>
-                  </button>
-                </pre>
-              ) : (
-                <p className="text-blue-300/70">
-                  No code submitted for this session.
-                </p>
-              )}
+            {/* --- Code Box --- */}
+            <div className="flex-1 min-w-0">
+              <div
+                className="relative pretty-scrollbar bg-slate-800 rounded-lg
+                 border border-blue-800/30 text-green-300 p-2 text-sm font-mono
+                 max-h-[60vh] flex flex-col"
+              >
+                <button
+                  className="absolute bottom-6 right-6
+                   bg-gradient-to-r from-blue-500 to-indigo-600
+                   hover:from-blue-600 hover:to-indigo-700
+                   text-white p-2 rounded-md shadow-lg
+                   transition-all duration-300 ease-in-out
+                   disabled:opacity-50 disabled:cursor-not-allowed z-10"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    setIsLoading(true);
+                    setAiResponse('');
+                    try {
+                      const data = await handleButtonClick(selectedCode);
+                      setAiResponse(data.response);
+                    } catch (error) {
+                      console.error(error);
+                      setAiResponse(
+                        error instanceof Error
+                          ? error.message
+                          : 'Failed to fetch response.'
+                      );
+                    } finally {
+                      setIsLoading(false);
+                    }
+                  }}
+                  disabled={isLoading}
+                  title="Generate AI Summary"
+                >
+                  <span className="font-bold text-sm">AI</span>
+                </button>
+
+                {/* scrollable and horizontally safe area */}
+                <div className="overflow-auto flex-1">
+                  {selectedCode ? (
+                    <pre className="whitespace-pre-wrap break-all">
+                      {selectedCode}
+                    </pre>
+                    ) : (
+                    <p className="text-blue-300/70">
+                      No code submitted for this session.
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
 
             {/* --- AI Response Box --- */}
-            <div className="flex-1">
-              <div className="bg-slate-800 pretty-scrollbar rounded-lg p-4 overflow-y-auto max-h-[60vh] h-full text-sm font-mono whitespace-pre-wrap border border-violet-400 text-slate-300">
+            <div className="flex-1 min-w-0">
+              <div
+                className="pretty-scrollbar bg-slate-800 rounded-lg p-4
+                 overflow-y-auto max-h-[60vh] h-full text-sm font-mono
+                 whitespace-pre-wrap border border-violet-400 text-slate-300"
+              >
                 {selectedCode ? (
                   isLoading ? (
-                  <p className="text-slate-400">Generating...</p>
-                ) : aiResponse ? (
-                  <div className="prose prose-sm prose-invert prose-slate max-w-none">
-                    <ReactMarkdown>{aiResponse}</ReactMarkdown>
-                  </div>
+                    <p className="text-slate-400">Generating...</p>
+                  ) : aiResponse ? (
+                    <div className="prose prose-sm prose-invert prose-slate max-w-none">
+                      <ReactMarkdown>{aiResponse}</ReactMarkdown>
+                    </div>
+                  ) : (
+                    <p className="text-slate-500">
+                      Click the AI button to see the response here.
+                    </p>
+                  )
                 ) : (
-                  <p className="text-slate-500">
-                    Click the AI button to see the response here.
+                  <p className="text-blue-300/70">
+                    No code submitted for this session.
                   </p>
-                )) : (
-                <p className="text-blue-300/70">
-                  No code submitted for this session.
-                </p>
                 )}
               </div>
             </div>
