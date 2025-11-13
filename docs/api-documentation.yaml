@@ -1,0 +1,1189 @@
+##
+# AI Assistance Disclosure
+# Tool: GitHub Copilot
+# Date: 2025-11-12
+# Scope: The OpenAPI YAML structure in this file was generated with AI assistance. All API design, endpoint specifications, and documentation content were authored and reviewed by the project team; only the YAML syntax/boilerplate was produced by Copilot.
+# Author review: I reviewed all AI-generated YAML for technical accuracy, ensured it matched the intended API structure, and verified that no design or documentation content was produced by AI. All endpoint details and descriptions are original work.
+
+
+
+openapi: 3.0.3
+info:
+  title: PeerPrep API Documentation
+  description: |
+    Complete API documentation for the PeerPrep microservices architecture.
+    All endpoints are accessible through the API Gateway at `/api/:service/*`.
+
+    ## Architecture
+    - **API Gateway**: Port 8000 (HTTP + WebSocket)
+    - **User Service**: Port 6001
+    - **Question Service**: Port 6002
+    - **Collaboration Service**: Port 6004
+    - **Matching Service**: Port 6006
+    - **Chat Service**: Port 6010
+    - **AI Service**: Port 6020
+
+    ## Authentication
+    Most endpoints require JWT authentication via Supabase. Include the token in the Authorization header:
+    ```
+    Authorization: Bearer <your-jwt-token>
+    ```
+  version: 1.0.0
+  contact:
+    name: CS3219 Project G22
+    url: https://github.com/thony-ui/cs3219-ay2526s1-project-g22
+
+servers:
+  - url: http://localhost:8000
+    description: Local Development (API Gateway)
+
+tags:
+  - name: User Service
+    description: User profile management and authentication
+  - name: Question Service
+    description: Coding questions database and retrieval
+  - name: Collaboration Service
+    description: Real-time collaboration sessions and code editing
+  - name: Matching Service
+    description: User matching algorithm and queue management
+  - name: Chat Service
+    description: Real-time chat messaging for collaboration sessions
+  - name: AI Service
+    description: AI-powered coding assistance via DeepSeek
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from Supabase authentication
+
+  schemas:
+    User:
+      type: object
+      required:
+        - id
+        - email
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: User's unique identifier from Supabase auth
+        email:
+          type: string
+          format: email
+          description: User's email address
+        name:
+          type: string
+          description: User's display name
+        avatar_url:
+          type: string
+          format: uri
+          description: URL to user's avatar image
+          nullable: true
+
+    Question:
+      type: object
+      required:
+        - questionId
+        - title
+        - difficulty
+        - content
+        - tags
+      properties:
+        _id:
+          type: string
+          description: MongoDB ObjectId
+        questionId:
+          type: string
+          description: Unique question identifier
+        title:
+          type: string
+          description: Question title
+        difficulty:
+          type: string
+          enum: [Easy, Medium, Hard]
+          description: Difficulty level
+        content:
+          type: string
+          description: Question description and requirements
+        tags:
+          type: array
+          items:
+            type: string
+          description: Topic tags (e.g., "algorithms", "data-structures")
+        codeSnippets:
+          type: array
+          items:
+            type: object
+          description: Code templates for different languages
+          nullable: true
+
+    Session:
+      type: object
+      required:
+        - id
+        - interviewee_id
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Session unique identifier
+        interviewer_id:
+          type: string
+          format: uuid
+          description: Interviewer user ID (nullable for solo sessions)
+          nullable: true
+        interviewee_id:
+          type: string
+          format: uuid
+          description: Interviewee user ID
+        question_id:
+          type: string
+          description: Associated question ID
+        current_code:
+          type: string
+          description: Current code snapshot
+        current_language:
+          type: string
+          description: Programming language being used
+        completed_at:
+          type: string
+          format: date-time
+          description: Session completion timestamp
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          description: Session creation timestamp
+
+    ChatMessage:
+      type: object
+      required:
+        - id
+        - session_id
+        - user_id
+        - content
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Chat message unique identifier
+        session_id:
+          type: string
+          format: uuid
+          description: Associated session ID
+        user_id:
+          type: string
+          format: uuid
+          description: User who sent the message
+        content:
+          type: string
+          description: Message content
+        role:
+          type: string
+          description: Message role (user/system/assistant)
+          nullable: true
+        metadata:
+          type: object
+          description: Additional message metadata
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          description: Message creation timestamp
+
+    MatchingPreferences:
+      type: object
+      required:
+        - topics
+        - difficulty
+      properties:
+        topics:
+          type: array
+          items:
+            type: string
+          description: Preferred question topics
+          example: ["algorithms", "data-structures"]
+        difficulty:
+          type: string
+          enum: [easy, medium, hard]
+          description: Preferred difficulty level
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error message
+
+paths:
+  # ==================== USER SERVICE ====================
+  /api/user-service/v1/users:
+    post:
+      tags:
+        - User Service
+      summary: Create a new user profile
+      description: Creates a user profile in the database after Supabase authentication
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - email
+              properties:
+                name:
+                  type: string
+                  description: User's display name
+                email:
+                  type: string
+                  format: email
+                  description: User's email address
+      responses:
+        "200":
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "User added to database"
+        "400":
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized - Invalid or missing JWT token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    get:
+      tags:
+        - User Service
+      summary: Get current user profile
+      description: Retrieves the authenticated user's profile information
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: User profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    put:
+      tags:
+        - User Service
+      summary: Update user profile
+      description: Updates the authenticated user's profile information
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  description: Updated display name
+                avatar_url:
+                  type: string
+                  format: uri
+                  description: Updated avatar URL
+      responses:
+        "200":
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "User updated in database"
+        "400":
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ==================== QUESTION SERVICE ====================
+  /api/question-service/questions:
+    get:
+      tags:
+        - Question Service
+      summary: Get questions with optional filters
+      description: Retrieves questions with optional filtering by difficulty and/or topics
+      parameters:
+        - name: difficulty
+          in: query
+          description: Filter by difficulty level
+          schema:
+            type: string
+            enum: [Easy, Medium, Hard]
+        - name: topics
+          in: query
+          description: Filter by topics (comma-separated)
+          schema:
+            type: string
+          example: "algorithms,data-structures"
+      responses:
+        "200":
+          description: Questions retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Question"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/question-service/questions/random:
+    get:
+      tags:
+        - Question Service
+      summary: Get a random question
+      description: Retrieves a random question with optional filtering
+      parameters:
+        - name: difficulty
+          in: query
+          description: Filter by difficulty level
+          schema:
+            type: string
+            enum: [Easy, Medium, Hard]
+        - name: topics
+          in: query
+          description: Filter by topics (comma-separated)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Random question retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Question"
+        "404":
+          description: No questions found matching criteria
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/question-service/questions/topics:
+    get:
+      tags:
+        - Question Service
+      summary: Get all available topics
+      description: Retrieves a list of all unique topics across all questions
+      responses:
+        "200":
+          description: Topics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                example:
+                  [
+                    "algorithms",
+                    "data-structures",
+                    "dynamic-programming",
+                    "arrays",
+                  ]
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/question-service/questions/{id}:
+    get:
+      tags:
+        - Question Service
+      summary: Get question by ID
+      description: Retrieves a specific question by its ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Question ID
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Question retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Question"
+        "404":
+          description: Question not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/question-service/questions/by-ids:
+    post:
+      tags:
+        - Question Service
+      summary: Get multiple questions by IDs
+      description: Retrieves multiple questions given an array of IDs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - ids
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                  description: Array of question IDs
+      responses:
+        "200":
+          description: Questions retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Question"
+        "400":
+          description: No question IDs provided
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No questions found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ==================== COLLABORATION SERVICE ====================
+  /api/collaboration-service/sessions:
+    post:
+      tags:
+        - Collaboration Service
+      summary: Create a new collaboration session
+      description: Creates a new coding session with optional interviewer and question
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - interviewee_id
+              properties:
+                interviewer_id:
+                  type: string
+                  format: uuid
+                  description: Interviewer user ID (optional, null for solo sessions)
+                interviewee_id:
+                  type: string
+                  format: uuid
+                  description: Interviewee user ID
+                initial_code:
+                  type: string
+                  description: Starting code template
+                question_id:
+                  type: string
+                  description: Question ID (if not provided, random question is assigned)
+      responses:
+        "200":
+          description: Session created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "400":
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/collaboration-service/sessions/{id}:
+    get:
+      tags:
+        - Collaboration Service
+      summary: Get session by ID
+      description: Retrieves a specific collaboration session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Session ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Session retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/collaboration-service/sessions/{id}/snapshot:
+    patch:
+      tags:
+        - Collaboration Service
+      summary: Update session code snapshot
+      description: Updates the current code and/or language in the session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Session ID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+                  description: Updated code content
+                language:
+                  type: string
+                  description: Programming language
+      responses:
+        "200":
+          description: Snapshot updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "400":
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/collaboration-service/sessions/{id}/complete:
+    patch:
+      tags:
+        - Collaboration Service
+      summary: Mark session as completed
+      description: Marks a collaboration session as completed
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Session ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Session completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/collaboration-service/sessions/getUserSessions:
+    post:
+      tags:
+        - Collaboration Service
+      summary: Get all sessions for current user
+      description: Retrieves all collaboration sessions (completed and active) for the authenticated user
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Sessions retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Session"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/collaboration-service/sessions/getActiveSession:
+    post:
+      tags:
+        - Collaboration Service
+      summary: Get active session for current user
+      description: Retrieves the current active session (not completed) for the authenticated user
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Active session retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ==================== MATCHING SERVICE ====================
+  /api/matching-service/matching/preferences/{userId}:
+    get:
+      tags:
+        - Matching Service
+      summary: Get user matching preferences
+      description: Retrieves matching preferences for a specific user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: User ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Preferences retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatchingPreferences"
+
+    post:
+      tags:
+        - Matching Service
+      summary: Set or update user matching preferences
+      description: Sets or updates matching preferences (topics and difficulty)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: User ID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MatchingPreferences"
+      responses:
+        "200":
+          description: Preferences updated successfully
+
+  /api/matching-service/matching/queue/{userId}:
+    post:
+      tags:
+        - Matching Service
+      summary: Add user to matching queue
+      description: Adds a user to the matching queue to find a peer
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: User ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: User added to queue successfully
+
+    delete:
+      tags:
+        - Matching Service
+      summary: Remove user from matching queue
+      description: Removes a user from the matching queue
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: User ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: User removed from queue successfully
+
+  /api/matching-service/matching/matches/{matchId}:
+    delete:
+      tags:
+        - Matching Service
+      summary: Clear matches
+      description: Removes all matches for the specified match ID (e.g., after session ends)
+      parameters:
+        - name: matchId
+          in: path
+          required: true
+          description: Match ID
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Matches cleared successfully
+
+  /api/matching-service/matching/history/{userId}:
+    get:
+      tags:
+        - Matching Service
+      summary: Get user matching history
+      description: Retrieves matching history for a specific user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: User ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Matching history retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+  /api/matching-service/matching/proposals/{proposalId}/accept:
+    post:
+      tags:
+        - Matching Service
+      summary: Accept a match proposal
+      description: User accepts a proposed match
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: proposalId
+          in: path
+          required: true
+          description: Proposal ID
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Proposal accepted successfully
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/matching-service/matching/proposals/{proposalId}/reject:
+    post:
+      tags:
+        - Matching Service
+      summary: Reject a match proposal
+      description: User rejects a proposed match
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: proposalId
+          in: path
+          required: true
+          description: Proposal ID
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Proposal rejected successfully
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ==================== CHAT SERVICE ====================
+  /api/chat-service/sessions/{sessionId}/chats:
+    get:
+      tags:
+        - Chat Service
+      summary: Get chat messages for a session
+      description: Retrieves chat messages for a collaboration session with optional timestamp filter
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: Session ID
+          schema:
+            type: string
+            format: uuid
+        - name: since
+          in: query
+          description: ISO timestamp to fetch messages since
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Chat messages retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChatMessage"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden - User is not a session participant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    post:
+      tags:
+        - Chat Service
+      summary: Send a chat message
+      description: Posts a new chat message to a collaboration session
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: Session ID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - content
+              properties:
+                content:
+                  type: string
+                  description: Message content
+                role:
+                  type: string
+                  description: Message role (user/system/assistant)
+                metadata:
+                  type: object
+                  description: Additional message metadata
+      responses:
+        "200":
+          description: Message posted successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatMessage"
+        "400":
+          description: Invalid content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden - User is not a session participant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/chat-service/sessions/{sessionId}/chats/{chatId}:
+    delete:
+      tags:
+        - Chat Service
+      summary: Delete a chat message
+      description: Deletes a specific chat message (user can only delete their own messages)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: Session ID
+          schema:
+            type: string
+            format: uuid
+        - name: chatId
+          in: path
+          required: true
+          description: Chat message ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Message deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Message deleted"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden - User can only delete their own messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Message not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ==================== AI SERVICE ====================
+  /api/ai-service/ai/chat:
+    post:
+      tags:
+        - AI Service
+      summary: AI-powered chat assistance
+      description: |
+        Sends a chat request to the AI assistant (DeepSeek via OpenRouter).
+        The AI provides coding help, explanations, and debugging assistance.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - messages
+              properties:
+                messages:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - role
+                      - content
+                    properties:
+                      role:
+                        type: string
+                        enum: [system, user, assistant]
+                        description: Message role
+                      content:
+                        type: string
+                        description: Message content
+                  description: Array of conversation messages
+                  example:
+                    - role: "system"
+                      content: "You are a helpful coding assistant."
+                    - role: "user"
+                      content: "Explain how binary search works."
+      responses:
+        "200":
+          description: AI response generated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: string
+                    description: AI-generated response
+                  usage:
+                    type: object
+                    description: Token usage statistics
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ==================== API GATEWAY ====================
+  /health:
+    get:
+      tags:
+        - API Gateway
+      summary: Health check
+      description: API Gateway health check endpoint
+      responses:
+        "200":
+          description: Gateway is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"

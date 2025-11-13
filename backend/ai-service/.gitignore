@@ -1,0 +1,10 @@
+.env
+.env.production
+/node_modules/
+dump.rdb
+/builds/
+/dist/
+/logs/
+/.cache/
+# AI Assistance Documentation
+AI_ASSISTANCE_DISCLOSURE.md

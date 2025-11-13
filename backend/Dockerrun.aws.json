@@ -1,0 +1,142 @@
+{
+  "AWSEBDockerrunVersion": 2,
+  "containerDefinitions": [
+    {
+      "name": "api-gateway-service",
+      "image": "820976530674.dkr.ecr.ap-southeast-1.amazonaws.com/api-gateway:latest",
+      "essential": true,
+      "memoryReservation": 128,
+      "portMappings": [{ "containerPort": 8000, "hostPort": 80 }],
+      "links": [
+        "user-service",
+        "collaboration-service",
+        "question-service",
+        "matching-service",
+        "chat-service",
+        "ai-service"
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/aws/elasticbeanstalk/peer-prep-backend",
+          "awslogs-region": "ap-southeast-1",
+          "awslogs-stream-prefix": "api-gateway"
+        }
+      }
+    },
+    {
+      "name": "user-service",
+      "image": "820976530674.dkr.ecr.ap-southeast-1.amazonaws.com/user-service:latest",
+      "essential": true,
+      "memoryReservation": 256,
+      "portMappings": [{ "containerPort": 6001, "hostPort": 6001 }],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/aws/elasticbeanstalk/peer-prep-backend",
+          "awslogs-region": "ap-southeast-1",
+          "awslogs-stream-prefix": "user-service"
+        }
+      }
+    },
+    {
+      "name": "collaboration-service",
+      "image": "820976530674.dkr.ecr.ap-southeast-1.amazonaws.com/collaboration-service:latest",
+      "essential": true,
+      "memoryReservation": 256,
+      "portMappings": [{ "containerPort": 6004, "hostPort": 6004 }],
+      "links": ["question-service"],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/aws/elasticbeanstalk/peer-prep-backend",
+          "awslogs-region": "ap-southeast-1",
+          "awslogs-stream-prefix": "collaboration-service"
+        }
+      }
+    },
+    {
+      "name": "question-service",
+      "image": "820976530674.dkr.ecr.ap-southeast-1.amazonaws.com/question-service:latest",
+      "essential": true,
+      "memoryReservation": 256,
+      "portMappings": [{ "containerPort": 6002, "hostPort": 6002 }],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/aws/elasticbeanstalk/peer-prep-backend",
+          "awslogs-region": "ap-southeast-1",
+          "awslogs-stream-prefix": "question-service"
+        }
+      }
+    },
+    {
+      "name": "matching-service",
+      "image": "820976530674.dkr.ecr.ap-southeast-1.amazonaws.com/matching-service:latest",
+      "essential": true,
+      "memoryReservation": 256,
+      "portMappings": [{ "containerPort": 6006, "hostPort": 6006 }],
+      "links": ["redis", "collaboration-service", "question-service"],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/aws/elasticbeanstalk/peer-prep-backend",
+          "awslogs-region": "ap-southeast-1",
+          "awslogs-stream-prefix": "matching-service"
+        }
+      }
+    },
+    {
+      "name": "chat-service",
+      "image": "820976530674.dkr.ecr.ap-southeast-1.amazonaws.com/chat-service:latest",
+      "essential": true,
+      "memoryReservation": 128,
+      "portMappings": [{ "containerPort": 6010, "hostPort": 6010 }],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/aws/elasticbeanstalk/peer-prep-backend",
+          "awslogs-region": "ap-southeast-1",
+          "awslogs-stream-prefix": "chat-service"
+        }
+      }
+    },
+    {
+      "name": "ai-service",
+      "image": "820976530674.dkr.ecr.ap-southeast-1.amazonaws.com/ai-service:latest",
+      "essential": true,
+      "memoryReservation": 256,
+      "portMappings": [{ "containerPort": 6020, "hostPort": 6020 }],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/aws/elasticbeanstalk/peer-prep-backend",
+          "awslogs-region": "ap-southeast-1",
+          "awslogs-stream-prefix": "ai-service"
+        }
+      }
+    },
+    {
+      "name": "redis",
+      "image": "redis:7.0-alpine",
+      "essential": false,
+      "memoryReservation": 128,
+      "portMappings": [{ "containerPort": 6379, "hostPort": 6379 }]
+    },
+    {
+      "name": "piston",
+      "image": "ghcr.io/engineer-man/piston",
+      "essential": false,
+      "memoryReservation": 512,
+      "portMappings": [{ "containerPort": 2000, "hostPort": 2000 }],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/aws/elasticbeanstalk/peer-prep-backend",
+          "awslogs-region": "ap-southeast-1",
+          "awslogs-stream-prefix": "piston"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+
+    <!-- AI Assistance Disclosure:
+    Tool: GitHub Copilot
+    Date: 2025-11-12
+    Scope: Diagrams in this file were generated with AI assistance. All architectural decisions, system design, and documentation content were authored and reviewed by the project team; only diagram syntax/structure was produced by Copilot.
+    Author review: I reviewed all AI-generated diagrams for technical accuracy, ensured they matched the intended architecture, and verified that no design or documentation content was produced by AI. All narrative and technical details are original work. -->
+
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PeerPrep API Documentation</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css"
+    />
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      .topbar {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="swagger-ui"></div>
+    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
+    <script src="https://unpkg.com/js-yaml@4/dist/js-yaml.min.js"></script>
+    <script>
+      // Fetch and parse the YAML file
+      fetch("./api-documentation.yaml")
+        .then((response) => response.text())
+        .then((yamlText) => {
+          const spec = jsyaml.load(yamlText);
+
+          window.ui = SwaggerUIBundle({
+            spec: spec,
+            dom_id: "#swagger-ui",
+            deepLinking: true,
+            presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+            plugins: [SwaggerUIBundle.plugins.DownloadUrl],
+            layout: "StandaloneLayout",
+            defaultModelsExpandDepth: 1,
+            defaultModelExpandDepth: 1,
+            docExpansion: "list",
+            filter: true,
+            showExtensions: true,
+            showCommonExtensions: true,
+            tryItOutEnabled: true,
+          });
+        })
+        .catch((error) => {
+          console.error("Error loading API documentation:", error);
+          document.getElementById("swagger-ui").innerHTML =
+            '<div style="padding: 20px; color: red;">' +
+            "<h2>Error Loading API Documentation</h2>" +
+            "<p>Failed to load api-documentation.yaml. Make sure the file exists in the same directory.</p>" +
+            "<p>Error: " +
+            error.message +
+            "</p>" +
+            "</div>";
+        });
+    </script>
+  </body>
+</html>

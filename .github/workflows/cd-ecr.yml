@@ -1,0 +1,74 @@
+name: Build & Push services to ECR
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "backend/api-gateway-service/**"
+      - "backend/user-service/**"
+      - "backend/question-service/**"
+      - "backend/matching-service/**"
+      - "backend/collaboration-service/**"
+      - "backend/chat-service/**"
+      - "backend/ai-service/**"
+      - ".github/workflows/cd-ecr.yml"
+
+jobs:
+  detect-and-build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        service:
+          - { name: "api-gateway", folder: "backend/api-gateway-service" }
+          - { name: "user-service", folder: "backend/user-service" }
+          - { name: "question-service", folder: "backend/question-service" }
+          - { name: "matching-service", folder: "backend/matching-service" }
+          - {
+              name: "collaboration-service",
+              folder: "backend/collaboration-service",
+            }
+          - { name: "chat-service", folder: "backend/chat-service" }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check if ${{ matrix.service.folder }} changed
+        id: changed
+        uses: tj-actions/changed-files@v45
+        with:
+          files: ${{ matrix.service.folder }}/**
+
+      - name: Skip if not changed
+        if: steps.changed.outputs.any_changed != 'true'
+        run: echo "No changes in ${{ matrix.service.folder }}, skipping."
+
+      - name: Configure AWS credentials
+        if: steps.changed.outputs.any_changed == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to ECR
+        if: steps.changed.outputs.any_changed == 'true'
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        if: steps.changed.outputs.any_changed == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push ${{ matrix.service.name }}
+        if: steps.changed.outputs.any_changed == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ matrix.service.folder }}
+          platforms: linux/amd64
+          target: production
+          push: true
+          tags: |
+            ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ matrix.service.name }}:latest
+            ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ matrix.service.name }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

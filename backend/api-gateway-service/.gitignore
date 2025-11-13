@@ -1,0 +1,17 @@
+.env
+.env.production
+/node_modules/
+dump.rdb
+/builds/
+/dist/
+/logs/
+/.cache/
+/packages/
+/piston-data/
+
+# Test files
+test-endpoints.js
+test-question-retrieval.js
+test-api.sh
+# AI Assistance Documentation
+AI_ASSISTANCE_DISCLOSURE.md

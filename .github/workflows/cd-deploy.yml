@@ -1,0 +1,31 @@
+name: CD Pipeline
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
+      - name: Generate deployment package
+        working-directory: ./backend
+        run: zip -r deploy.zip Dockerrun.aws.json
+
+      - name: Deploy to EB
+        uses: einaregilsson/beanstalk-deploy@v22
+        with:
+          aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          application_name: peer-prep-backend
+          environment_name: Peer-prep-backend-env
+          version_label: ${{ github.sha }}
+          region: ap-southeast-1
+          deployment_package: backend/deploy.zip

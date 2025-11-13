@@ -1,0 +1,120 @@
+version: "3.8"
+
+services:
+  redis:
+    image: redis:7
+    container_name: redis-local
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    networks:
+      - shared-network
+  piston:
+    image: ghcr.io/engineer-man/piston
+    container_name: piston_api
+    ports:
+      - "2000:2000"
+    privileged: true
+    volumes:
+      - ./piston-data:/piston
+    networks:
+      - shared-network
+    platform: linux/amd64
+  api-gateway-service:
+    build:
+      context: ./api-gateway-service
+      dockerfile: ./Dockerfile
+      target: development
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api-gateway-service/src:/app/src
+    env_file:
+      - .env
+    networks:
+      - shared-network
+
+  user-service:
+    build:
+      context: ./user-service
+      dockerfile: ./Dockerfile
+      target: development
+    ports:
+      - "6001:6001"
+    volumes:
+      - ./user-service/src:/app/src
+    env_file:
+      - .env
+    networks:
+      - shared-network
+  collaboration-service:
+    build:
+      context: ./collaboration-service
+      dockerfile: ./Dockerfile
+      target: development
+    ports:
+      - "6004:6004"
+    volumes:
+      - ./collaboration-service/src:/app/src
+    env_file:
+      - .env
+    networks:
+      - shared-network
+
+  question-service:
+    build:
+      context: ./question-service
+      dockerfile: ./Dockerfile
+      target: development
+    ports:
+      - "6002:6002"
+    volumes:
+      - ./question-service/src:/app/src
+    env_file:
+      - .env
+    networks:
+      - shared-network
+
+  matching-service:
+    build:
+      context: ./matching-service
+      dockerfile: ./Dockerfile
+      target: development
+    ports:
+      - "6006:6006"
+    volumes:
+      - ./matching-service/src:/app/src
+    env_file:
+      - .env
+    networks:
+      - shared-network
+  chat-service:
+    build:
+      context: ./chat-service
+      dockerfile: ./Dockerfile
+      target: development
+    ports:
+      - "6010:6010"
+    volumes:
+      - ./chat-service/src:/app/src
+    env_file:
+      - .env
+    networks:
+      - shared-network
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: ./Dockerfile
+      target: development
+    ports:
+      - "6020:6020"
+    volumes:
+      - ./ai-service/src:/app/src
+    env_file:
+      - .env
+    networks:
+      - shared-network
+
+networks:
+  shared-network:
+    driver: bridge
